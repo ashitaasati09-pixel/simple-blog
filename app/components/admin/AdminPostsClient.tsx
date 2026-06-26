@@ -1,7 +1,9 @@
 "use client";
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { adminDeletePostAction, adminUpdatePostAction } from "@/app/lib/actions/admin";
+import RichTextEditor from "@/app/components/RichTextEditor";
+import { stripHtml } from "@/app/lib/strip-html";
 
 interface PostData {
   id: string; title: string; content: string; author: string;
@@ -12,13 +14,38 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-export default function AdminPostsClient({ posts: initialPosts }: { posts: PostData[] }) {
+function getPaginationPages(current: number, total: number): (number | "...")[] {
+  const pages: (number | "...")[] = [];
+  if (total <= 7) { for (let i = 1; i <= total; i++) pages.push(i); }
+  else {
+    pages.push(1);
+    if (current > 3) pages.push("...");
+    for (let i = Math.max(2, current - 1); i <= Math.min(total - 1, current + 1); i++) pages.push(i);
+    if (current < total - 2) pages.push("...");
+    pages.push(total);
+  }
+  return pages;
+}
+
+export default function AdminPostsClient({
+  posts: initialPosts, totalCount, currentPage, totalPages,
+}: {
+  posts: PostData[]; totalCount: number; currentPage: number; totalPages: number;
+}) {
+  // KEY FIX: sync local posts state whenever server sends new props (on page change)
   const [posts, setPosts] = useState<PostData[]>(initialPosts);
   const [editTarget, setEditTarget] = useState<PostData | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editContent, setEditContent] = useState("");
   const [editError, setEditError] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<PostData | null>(null);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
+
+  // When server re-renders with new page data, sync local state
+  useEffect(() => {
+    setPosts(initialPosts);
+  }, [initialPosts]);
 
   const input = {
     width: "100%", boxSizing: "border-box" as const,
@@ -26,20 +53,23 @@ export default function AdminPostsClient({ posts: initialPosts }: { posts: PostD
     borderRadius: 8, fontSize: 13, outline: "none", fontFamily: "inherit",
   };
 
+  function openEdit(post: PostData) {
+    setEditError(""); setEditTarget(post); setEditTitle(post.title); setEditContent(post.content);
+  }
+
   function handleEdit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!editTarget) return;
     setEditError("");
-    const formData = new FormData(e.currentTarget);
+    if (!editTitle.trim()) { setEditError("Title is required."); return; }
+    if (!editContent.trim() || editContent === "<p></p>") { setEditError("Content is required."); return; }
+    const formData = new FormData();
+    formData.append("title", editTitle); formData.append("content", editContent);
     startTransition(async () => {
       const result = await adminUpdatePostAction(editTarget.id, formData);
       if (result?.error) { setEditError(result.error); return; }
-
-      const newTitle = (formData.get("title") as string)?.trim();
-      const newContent = (formData.get("content") as string)?.trim();
-      setPosts((prev) =>
-        prev.map((p) => (p.id === editTarget.id ? { ...p, title: newTitle, content: newContent } : p))
-      );
+      setPosts((prev) => prev.map((p) => p.id === editTarget.id
+        ? { ...p, title: editTitle, content: editContent } : p));
       setEditTarget(null);
       router.refresh();
     });
@@ -54,11 +84,19 @@ export default function AdminPostsClient({ posts: initialPosts }: { posts: PostD
     });
   }
 
+  function goToPage(p: number) {
+    if (p < 1 || p > totalPages || p === currentPage) return;
+    router.push(p === 1 ? "/admin/posts" : `/admin/posts?page=${p}`);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  const paginationPages = getPaginationPages(currentPage, totalPages);
+
   return (
     <div style={{ padding: "32px" }}>
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 22, fontWeight: 900, color: "#111", margin: "0 0 4px" }}>Posts</h1>
-        <p style={{ fontSize: 13, color: "#9ca3af", margin: 0 }}>{posts.length} total posts</p>
+        <p style={{ fontSize: 13, color: "#9ca3af", margin: 0 }}>{totalCount} total posts</p>
       </div>
 
       <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e5e7eb", overflow: "hidden" }}>
@@ -71,22 +109,25 @@ export default function AdminPostsClient({ posts: initialPosts }: { posts: PostD
             </tr>
           </thead>
           <tbody>
-            {posts.map((post) => (
-              <tr key={post.id} style={{ borderBottom: "1px solid #f5f5f5" }}>
+            {posts.length === 0 ? (
+              <tr>
+                <td colSpan={7} style={{ padding: "40px 16px", textAlign: "center", color: "#9ca3af", fontSize: 13 }}>
+                  No posts yet.
+                </td>
+              </tr>
+            ) : posts.map((post) => (
+              <tr key={post.id} style={{ borderBottom: "1px solid #f5f5f5" }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "#fafafa")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+              >
                 <td style={{ padding: "12px 16px" }}>
-                  <button
-                    type="button"
+                  <button type="button"
                     onClick={() => router.push("/admin/posts/" + post.id + "/comments")}
-                    style={{
-                      background: "none", border: "none", padding: 0,
-                      fontWeight: 700, color: "#111", cursor: "pointer",
-                      fontFamily: "inherit", fontSize: 13, textAlign: "left",
-                    }}
-                  >
+                    style={{ background: "none", border: "none", padding: 0, fontWeight: 700, color: "#111", cursor: "pointer", fontFamily: "inherit", fontSize: 13, textAlign: "left" }}>
                     {post.title.length > 40 ? post.title.slice(0, 40) + "..." : post.title}
                   </button>
                   <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>
-                    {post.content.slice(0, 60)}...
+                    {stripHtml(post.content).slice(0, 60)}...
                   </div>
                 </td>
                 <td style={{ padding: "12px 16px" }}>
@@ -94,11 +135,9 @@ export default function AdminPostsClient({ posts: initialPosts }: { posts: PostD
                 </td>
                 <td style={{ padding: "12px 16px", color: "#374151", fontWeight: 600 }}>{post.likesCount}</td>
                 <td style={{ padding: "12px 16px" }}>
-                  <button
-                    type="button"
+                  <button type="button"
                     onClick={() => router.push("/admin/posts/" + post.id + "/comments")}
-                    style={{ background: "none", border: "none", padding: 0, color: "#374151", fontWeight: 600, cursor: "pointer", fontFamily: "inherit", fontSize: 13 }}
-                  >
+                    style={{ background: "none", border: "none", padding: 0, color: "#374151", fontWeight: 600, cursor: "pointer", fontFamily: "inherit", fontSize: 13 }}>
                     {post.commentsCount}
                   </button>
                 </td>
@@ -106,25 +145,17 @@ export default function AdminPostsClient({ posts: initialPosts }: { posts: PostD
                 <td style={{ padding: "12px 16px", color: "#9ca3af" }}>{formatDate(post.createdAt)}</td>
                 <td style={{ padding: "12px 16px" }}>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    <button
-                      type="button"
-                      onClick={() => { setEditError(""); setEditTarget(post); }}
-                      style={{ padding: "4px 10px", border: "1px solid #f97316", borderRadius: 6, background: "#fff", color: "#f97316", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
-                    >
+                    <button type="button" onClick={() => openEdit(post)}
+                      style={{ padding: "4px 10px", border: "1px solid #f97316", borderRadius: 6, background: "#fff", color: "#f97316", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
                       Edit
                     </button>
-                    <button
-                      type="button"
+                    <button type="button"
                       onClick={() => router.push("/admin/posts/" + post.id + "/comments")}
-                      style={{ padding: "4px 10px", border: "1px solid #e5e7eb", borderRadius: 6, background: "#fff", color: "#6b7280", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
-                    >
+                      style={{ padding: "4px 10px", border: "1px solid #e5e7eb", borderRadius: 6, background: "#fff", color: "#6b7280", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
                       Comments
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setDeleteTarget(post)}
-                      style={{ padding: "4px 10px", border: "1px solid #fca5a5", borderRadius: 6, background: "#fff", color: "#ef4444", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
-                    >
+                    <button type="button" onClick={() => setDeleteTarget(post)}
+                      style={{ padding: "4px 10px", border: "1px solid #fca5a5", borderRadius: 6, background: "#fff", color: "#ef4444", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
                       Delete
                     </button>
                   </div>
@@ -135,10 +166,79 @@ export default function AdminPostsClient({ posts: initialPosts }: { posts: PostD
         </table>
       </div>
 
-      {/* Edit modal — same pattern as Users/Admins */}
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div style={{ marginTop: 28 }}>
+          <p style={{ textAlign: "center", fontSize: 12, color: "#9ca3af", margin: "0 0 14px" }}>
+            Page {currentPage} of {totalPages} · {totalCount} posts
+          </p>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
+
+            {/* First page */}
+            {currentPage > 2 && (
+              <button onClick={() => goToPage(1)}
+                style={{ padding: "8px 12px", border: "1.5px solid #e5e7eb", borderRadius: 8, background: "#fff", color: "#374151", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+                onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#f97316")}
+                onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#e5e7eb")}>
+                «
+              </button>
+            )}
+
+            {/* Prev */}
+            <button onClick={() => goToPage(currentPage - 1)} disabled={currentPage === 1}
+              style={{ padding: "8px 16px", border: "1.5px solid #e5e7eb", borderRadius: 8, background: currentPage === 1 ? "#f9fafb" : "#fff", color: currentPage === 1 ? "#d1d5db" : "#374151", fontSize: 13, fontWeight: 600, cursor: currentPage === 1 ? "not-allowed" : "pointer", fontFamily: "inherit" }}
+              onMouseEnter={(e) => { if (currentPage !== 1) e.currentTarget.style.borderColor = "#f97316"; }}
+              onMouseLeave={(e) => { if (currentPage !== 1) e.currentTarget.style.borderColor = "#e5e7eb"; }}>
+              ← Prev
+            </button>
+
+            {/* Page numbers */}
+            {paginationPages.map((pg, i) =>
+              pg === "..." ? (
+                <span key={"e" + i} style={{ padding: "8px 4px", color: "#9ca3af", fontSize: 13 }}>...</span>
+              ) : (
+                <button key={pg} onClick={() => goToPage(pg as number)}
+                  style={{
+                    width: 36, height: 36, borderRadius: 8,
+                    border: pg === currentPage ? "none" : "1.5px solid #e5e7eb",
+                    background: pg === currentPage ? "#f97316" : "#fff",
+                    color: pg === currentPage ? "#fff" : "#374151",
+                    fontSize: 13, fontWeight: pg === currentPage ? 700 : 500,
+                    cursor: pg === currentPage ? "default" : "pointer",
+                    fontFamily: "inherit",
+                  }}
+                  onMouseEnter={(e) => { if (pg !== currentPage) e.currentTarget.style.borderColor = "#f97316"; }}
+                  onMouseLeave={(e) => { if (pg !== currentPage) e.currentTarget.style.borderColor = "#e5e7eb"; }}>
+                  {pg}
+                </button>
+              )
+            )}
+
+            {/* Next */}
+            <button onClick={() => goToPage(currentPage + 1)} disabled={currentPage === totalPages}
+              style={{ padding: "8px 16px", border: "1.5px solid #e5e7eb", borderRadius: 8, background: currentPage === totalPages ? "#f9fafb" : "#fff", color: currentPage === totalPages ? "#d1d5db" : "#374151", fontSize: 13, fontWeight: 600, cursor: currentPage === totalPages ? "not-allowed" : "pointer", fontFamily: "inherit" }}
+              onMouseEnter={(e) => { if (currentPage !== totalPages) e.currentTarget.style.borderColor = "#f97316"; }}
+              onMouseLeave={(e) => { if (currentPage !== totalPages) e.currentTarget.style.borderColor = "#e5e7eb"; }}>
+              Next →
+            </button>
+
+            {/* Last page */}
+            {currentPage < totalPages - 1 && (
+              <button onClick={() => goToPage(totalPages)}
+                style={{ padding: "8px 12px", border: "1.5px solid #e5e7eb", borderRadius: 8, background: "#fff", color: "#374151", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+                onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#f97316")}
+                onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#e5e7eb")}>
+                »
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Edit modal */}
       {editTarget && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, overflowY: "auto", padding: "40px 16px" }}>
-          <div style={{ background: "#fff", borderRadius: 12, padding: "28px 32px", width: 520 }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, overflowY: "auto", padding: "40px 16px" }}>
+          <div style={{ background: "#fff", borderRadius: 12, padding: "28px 32px", width: 680, maxWidth: "92vw" }}>
             <h3 style={{ margin: "0 0 16px", fontSize: 16, fontWeight: 800 }}>Edit Post</h3>
             {editError && (
               <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", color: "#dc2626", borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: 13 }}>
@@ -148,15 +248,15 @@ export default function AdminPostsClient({ posts: initialPosts }: { posts: PostD
             <form onSubmit={handleEdit}>
               <div style={{ marginBottom: 12 }}>
                 <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>Title</label>
-                <input name="title" defaultValue={editTarget.title} required style={input} />
+                <input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} required style={input} />
               </div>
               <div style={{ marginBottom: 20 }}>
                 <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>Content</label>
-                <textarea name="content" defaultValue={editTarget.content} required rows={8} style={{ ...input, resize: "vertical", lineHeight: 1.5 }} />
+                <RichTextEditor content={editContent} onChange={setEditContent} placeholder="Edit post content..." />
               </div>
               <div style={{ display: "flex", gap: 10 }}>
                 <button type="submit" disabled={isPending}
-                  style={{ flex: 1, padding: "10px", background: "#f97316", border: "none", borderRadius: 8, color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                  style={{ flex: 1, padding: "10px", background: "#f97316", border: "none", borderRadius: 8, color: "#fff", fontWeight: 700, cursor: isPending ? "not-allowed" : "pointer", fontFamily: "inherit", opacity: isPending ? 0.7 : 1 }}>
                   {isPending ? "Saving..." : "Save Changes"}
                 </button>
                 <button type="button" onClick={() => { setEditTarget(null); setEditError(""); }}
@@ -171,7 +271,7 @@ export default function AdminPostsClient({ posts: initialPosts }: { posts: PostD
 
       {/* Delete modal */}
       {deleteTarget && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
           <div style={{ background: "#fff", borderRadius: 12, padding: "28px 32px", width: 360 }}>
             <h3 style={{ margin: "0 0 8px", fontSize: 16, fontWeight: 800 }}>Delete post?</h3>
             <p style={{ fontSize: 13, color: "#6b7280", margin: "0 0 20px" }}>
@@ -179,10 +279,10 @@ export default function AdminPostsClient({ posts: initialPosts }: { posts: PostD
             </p>
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => handleDelete(deleteTarget)} disabled={isPending}
-                style={{ flex: 1, padding: "10px", background: "#ef4444", border: "none", borderRadius: 8, color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                style={{ flex: 1, padding: "10px", background: "#ef4444", border: "none", borderRadius: 8, color: "#fff", fontWeight: 700, cursor: isPending ? "not-allowed" : "pointer", fontFamily: "inherit", opacity: isPending ? 0.7 : 1 }}>
                 {isPending ? "Deleting..." : "Delete"}
               </button>
-              <button onClick={() => setDeleteTarget(null)}
+              <button onClick={() => setDeleteTarget(null)} disabled={isPending}
                 style={{ flex: 1, padding: "10px", background: "#f3f4f6", border: "none", borderRadius: 8, color: "#374151", fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
                 Cancel
               </button>

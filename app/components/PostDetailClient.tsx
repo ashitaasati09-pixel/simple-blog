@@ -1,12 +1,13 @@
 "use client";
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useTransition, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   toggleLikeAction,
   addCommentAction,
   deleteCommentAction,
   removeLikeAction,
 } from "@/app/lib/actions/engagement";
+import RichContentDisplay from "@/app/components/RichContentDisplay";
 
 interface CommentData {
   _id: string;
@@ -40,32 +41,87 @@ function formatShortDate(iso: string) {
   });
 }
 
+function getPaginationPages(current: number, total: number): (number | "...")[] {
+  const pages: (number | "...")[] = [];
+  if (total <= 7) {
+    for (let i = 1; i <= total; i++) pages.push(i);
+  } else {
+    pages.push(1);
+    if (current > 3) pages.push("...");
+    for (
+      let i = Math.max(2, current - 1);
+      i <= Math.min(total - 1, current + 1);
+      i++
+    )
+      pages.push(i);
+    if (current < total - 2) pages.push("...");
+    pages.push(total);
+  }
+  return pages;
+}
+
 export default function PostDetailClient({
   post,
   currentUsername,
   backUrl,
+  commentTotal,
+  commentTotalPages,
+  commentCurrentPage,
 }: {
   post: PostData;
   currentUsername: string | null;
   backUrl: string;
+  commentTotal: number;
+  commentTotalPages: number;
+  commentCurrentPage: number;
 }) {
   const [likes, setLikes] = useState(post.likes);
+  // KEY FIX: sync comments state whenever props change (page navigation)
   const [comments, setComments] = useState(post.comments);
   const [commentText, setCommentText] = useState("");
   const [isPending, startTransition] = useTransition();
   const [showLikesList, setShowLikesList] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Sync comments from server whenever the page changes
+  useEffect(() => {
+    setComments(post.comments);
+  }, [post.comments, commentCurrentPage]);
 
   const initials = post.author?.[0]?.toUpperCase() ?? "?";
   const isOwner = currentUsername === post.author;
   const hasLiked = currentUsername ? likes.includes(currentUsername) : false;
+  const paginationPages = getPaginationPages(commentCurrentPage, commentTotalPages);
+
+  // Navigate to a comment page — always puts page first, from second
+  function goToCommentPage(targetPage: number) {
+    if (
+      targetPage < 1 ||
+      targetPage > commentTotalPages ||
+      targetPage === commentCurrentPage
+    )
+      return;
+
+    const from = searchParams.get("from");
+    // Build URL with page first to avoid any query-string parsing issues
+    let url = `/posts/${post._id}?page=${targetPage}`;
+    if (from) url += `&from=${encodeURIComponent(from)}`;
+
+    router.push(url);
+
+    setTimeout(() => {
+      document
+        .getElementById("comments-section")
+        ?.scrollIntoView({ behavior: "smooth" });
+    }, 80);
+  }
 
   function handleToggleLike() {
     if (!currentUsername) {
       router.push("/login");
       return;
     }
-    // optimistic update
     if (hasLiked) {
       setLikes((prev) => prev.filter((u) => u !== currentUsername));
     } else {
@@ -73,6 +129,13 @@ export default function PostDetailClient({
     }
     startTransition(async () => {
       await toggleLikeAction(post._id);
+    });
+  }
+
+  function handleRemoveLike(username: string) {
+    setLikes((prev) => prev.filter((u) => u !== username));
+    startTransition(async () => {
+      await removeLikeAction(post._id, username);
     });
   }
 
@@ -105,13 +168,6 @@ export default function PostDetailClient({
     setComments((prev) => prev.filter((c) => c._id !== commentId));
     startTransition(async () => {
       await deleteCommentAction(post._id, commentId);
-    });
-  }
-
-  function handleRemoveLike(username: string) {
-    setLikes((prev) => prev.filter((u) => u !== username));
-    startTransition(async () => {
-      await removeLikeAction(post._id, username);
     });
   }
 
@@ -217,16 +273,7 @@ export default function PostDetailClient({
       </h1>
 
       {/* Content */}
-      <div
-        style={{
-          fontSize: 16,
-          color: "#374151",
-          lineHeight: 1.9,
-          whiteSpace: "pre-wrap",
-        }}
-      >
-        {post.content}
-      </div>
+      <RichContentDisplay html={post.content} />
 
       {/* Like bar */}
       <div
@@ -277,11 +324,11 @@ export default function PostDetailClient({
         </button>
 
         <span style={{ fontSize: 14, color: "#9ca3af" }}>
-          💬 {comments.length} {comments.length === 1 ? "Comment" : "Comments"}
+          💬 {commentTotal} {commentTotal === 1 ? "Comment" : "Comments"}
         </span>
       </div>
 
-      {/* Likes list (owner can remove) */}
+      {/* Likes list */}
       {showLikesList && likes.length > 0 && (
         <div
           style={{
@@ -305,7 +352,11 @@ export default function PostDetailClient({
             >
               <a
                 href={"/profile/" + username + "?from=/posts/" + post._id}
-                style={{ color: "#374151", textDecoration: "none", fontWeight: 600 }}
+                style={{
+                  color: "#374151",
+                  textDecoration: "none",
+                  fontWeight: 600,
+                }}
               >
                 {username}
               </a>
@@ -330,8 +381,15 @@ export default function PostDetailClient({
       )}
 
       {/* Comments section */}
-      <div style={{ marginTop: 32 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 800, color: "#111", margin: "0 0 16px" }}>
+      <div id="comments-section" style={{ marginTop: 32 }}>
+        <h2
+          style={{
+            fontSize: 16,
+            fontWeight: 800,
+            color: "#111",
+            margin: "0 0 16px",
+          }}
+        >
           Comments
         </h2>
 
@@ -379,7 +437,7 @@ export default function PostDetailClient({
               <div style={{ marginTop: 8, textAlign: "right" }}>
                 <button
                   onClick={handleAddComment}
-                  disabled={!commentText.trim()}
+                  disabled={!commentText.trim() || isPending}
                   style={{
                     padding: "8px 20px",
                     background: commentText.trim() ? "#f97316" : "#e5e7eb",
@@ -408,7 +466,14 @@ export default function PostDetailClient({
               marginBottom: 24,
             }}
           >
-            <a href="/login" style={{ color: "#f97316", fontWeight: 700, textDecoration: "none" }}>
+            <a
+              href="/login"
+              style={{
+                color: "#f97316",
+                fontWeight: 700,
+                textDecoration: "none",
+              }}
+            >
               Log in
             </a>{" "}
             to like or comment on this post.
@@ -417,18 +482,25 @@ export default function PostDetailClient({
 
         {/* Comments list */}
         {comments.length === 0 ? (
-          <p style={{ fontSize: 14, color: "#9ca3af" }}>No comments yet. Be the first!</p>
+          <p style={{ fontSize: 14, color: "#9ca3af" }}>
+            No comments yet. Be the first!
+          </p>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             {comments.map((comment) => {
               const canDelete =
                 currentUsername === comment.author || isOwner;
-              const commentInitials = comment.author[0]?.toUpperCase() ?? "?";
-
+              const commentInitials =
+                comment.author[0]?.toUpperCase() ?? "?";
               return (
                 <div key={comment._id} style={{ display: "flex", gap: 10 }}>
                   <a
-                    href={"/profile/" + comment.author + "?from=/posts/" + post._id}
+                    href={
+                      "/profile/" +
+                      comment.author +
+                      "?from=/posts/" +
+                      post._id
+                    }
                     style={{ flexShrink: 0 }}
                   >
                     <div
@@ -465,7 +537,12 @@ export default function PostDetailClient({
                         }}
                       >
                         <a
-                          href={"/profile/" + comment.author + "?from=/posts/" + post._id}
+                          href={
+                            "/profile/" +
+                            comment.author +
+                            "?from=/posts/" +
+                            post._id
+                          }
                           style={{
                             fontSize: 13,
                             fontWeight: 700,
@@ -495,11 +572,17 @@ export default function PostDetailClient({
                           {formatShortDate(comment.createdAt)}
                         </span>
                       </div>
-                      <p style={{ fontSize: 14, color: "#374151", margin: 0, lineHeight: 1.6 }}>
+                      <p
+                        style={{
+                          fontSize: 14,
+                          color: "#374151",
+                          margin: 0,
+                          lineHeight: 1.6,
+                        }}
+                      >
                         {comment.text}
                       </p>
                     </div>
-
                     {canDelete && (
                       <button
                         onClick={() => handleDeleteComment(comment._id)}
@@ -525,8 +608,208 @@ export default function PostDetailClient({
             })}
           </div>
         )}
+
+        {/* Pagination — identical style to SearchClient */}
+        {commentTotalPages > 1 && (
+          <div
+            style={{
+              marginTop: 24,
+              paddingTop: 20,
+              borderTop: "1px solid #f0f0f0",
+            }}
+          >
+            <p
+              style={{
+                textAlign: "center",
+                fontSize: 12,
+                color: "#9ca3af",
+                margin: "0 0 14px",
+              }}
+            >
+              Page {commentCurrentPage} of {commentTotalPages} · {commentTotal}{" "}
+              comments
+            </p>
+
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
+                flexWrap: "wrap",
+              }}
+            >
+              {/* First « */}
+              {commentCurrentPage > 2 && (
+                <button
+                  onClick={() => goToCommentPage(1)}
+                  style={{
+                    padding: "8px 12px",
+                    border: "1.5px solid #e5e7eb",
+                    borderRadius: 8,
+                    background: "#fff",
+                    color: "#374151",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.borderColor = "#f97316")
+                  }
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.borderColor = "#e5e7eb")
+                  }
+                >
+                  «
+                </button>
+              )}
+
+              {/* Prev */}
+              <button
+                onClick={() => goToCommentPage(commentCurrentPage - 1)}
+                disabled={commentCurrentPage === 1}
+                style={{
+                  padding: "8px 16px",
+                  border: "1.5px solid #e5e7eb",
+                  borderRadius: 8,
+                  background: commentCurrentPage === 1 ? "#f9fafb" : "#fff",
+                  color:
+                    commentCurrentPage === 1 ? "#d1d5db" : "#374151",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor:
+                    commentCurrentPage === 1 ? "not-allowed" : "pointer",
+                  fontFamily: "inherit",
+                }}
+                onMouseEnter={(e) => {
+                  if (commentCurrentPage !== 1)
+                    e.currentTarget.style.borderColor = "#f97316";
+                }}
+                onMouseLeave={(e) => {
+                  if (commentCurrentPage !== 1)
+                    e.currentTarget.style.borderColor = "#e5e7eb";
+                }}
+              >
+                ← Prev
+              </button>
+
+              {/* Page numbers */}
+              {paginationPages.map((pg, i) =>
+                pg === "..." ? (
+                  <span
+                    key={"ellipsis-" + i}
+                    style={{
+                      padding: "8px 4px",
+                      color: "#9ca3af",
+                      fontSize: 13,
+                    }}
+                  >
+                    ...
+                  </span>
+                ) : (
+                  <button
+                    key={"page-" + pg}
+                    onClick={() => goToCommentPage(pg as number)}
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 8,
+                      border:
+                        pg === commentCurrentPage
+                          ? "none"
+                          : "1.5px solid #e5e7eb",
+                      background:
+                        pg === commentCurrentPage ? "#f97316" : "#fff",
+                      color:
+                        pg === commentCurrentPage ? "#fff" : "#374151",
+                      fontSize: 13,
+                      fontWeight: pg === commentCurrentPage ? 700 : 500,
+                      cursor:
+                        pg === commentCurrentPage ? "default" : "pointer",
+                      fontFamily: "inherit",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (pg !== commentCurrentPage)
+                        e.currentTarget.style.borderColor = "#f97316";
+                    }}
+                    onMouseLeave={(e) => {
+                      if (pg !== commentCurrentPage)
+                        e.currentTarget.style.borderColor = "#e5e7eb";
+                    }}
+                  >
+                    {pg}
+                  </button>
+                )
+              )}
+
+              {/* Next */}
+              <button
+                onClick={() => goToCommentPage(commentCurrentPage + 1)}
+                disabled={commentCurrentPage === commentTotalPages}
+                style={{
+                  padding: "8px 16px",
+                  border: "1.5px solid #e5e7eb",
+                  borderRadius: 8,
+                  background:
+                    commentCurrentPage === commentTotalPages
+                      ? "#f9fafb"
+                      : "#fff",
+                  color:
+                    commentCurrentPage === commentTotalPages
+                      ? "#d1d5db"
+                      : "#374151",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor:
+                    commentCurrentPage === commentTotalPages
+                      ? "not-allowed"
+                      : "pointer",
+                  fontFamily: "inherit",
+                }}
+                onMouseEnter={(e) => {
+                  if (commentCurrentPage !== commentTotalPages)
+                    e.currentTarget.style.borderColor = "#f97316";
+                }}
+                onMouseLeave={(e) => {
+                  if (commentCurrentPage !== commentTotalPages)
+                    e.currentTarget.style.borderColor = "#e5e7eb";
+                }}
+              >
+                Next →
+              </button>
+
+              {/* Last » */}
+              {commentCurrentPage < commentTotalPages - 1 && (
+                <button
+                  onClick={() => goToCommentPage(commentTotalPages)}
+                  style={{
+                    padding: "8px 12px",
+                    border: "1.5px solid #e5e7eb",
+                    borderRadius: 8,
+                    background: "#fff",
+                    color: "#374151",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.borderColor = "#f97316")
+                  }
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.borderColor = "#e5e7eb")
+                  }
+                >
+                  »
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
+      {/* Back button */}
       <div
         style={{
           borderTop: "1px solid #f0f0f0",

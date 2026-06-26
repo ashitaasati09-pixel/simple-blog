@@ -1,7 +1,7 @@
 import { redirect, notFound } from "next/navigation";
 import { getSessionUser } from "@/app/lib/session";
 import { connectDB } from "@/app/lib/mongodb";
-import Post from "@/app/models/post";
+import { Post } from "@/app/models/post";
 import EditPostForm from "@/app/components/EditPostForm";
 
 export default async function EditPostPage({

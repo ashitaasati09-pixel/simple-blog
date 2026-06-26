@@ -1,7 +1,9 @@
 import { getSessionUser } from "@/app/lib/session";
 import { connectDB } from "@/app/lib/mongodb";
-import Post from "@/app/models/post";
+import { Post } from "@/app/models/post";
 import HomePostsClient from "@/app/components/HomePostsClient";
+
+const POSTS_PER_PAGE = 5;
 
 interface PostData {
   _id: string;
@@ -13,11 +15,27 @@ interface PostData {
   commentsCount: number;
 }
 
-export default async function HomePage() {
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
+  const { page } = await searchParams;
   const user = await getSessionUser();
 
   await connectDB();
-  const rawPosts = await Post.find({}).sort({ createdAt: -1 }).lean();
+
+  const currentPage = Math.max(1, parseInt(page || "1", 10));
+  const skip = (currentPage - 1) * POSTS_PER_PAGE;
+
+  const [rawPosts, totalCount] = await Promise.all([
+    Post.find({})
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(POSTS_PER_PAGE)
+      .lean(),
+    Post.countDocuments({}),
+  ]);
 
   const posts: PostData[] = rawPosts.map((p) => {
     const post = p as unknown as {
@@ -40,6 +58,8 @@ export default async function HomePage() {
     };
   });
 
+  const totalPages = Math.ceil(totalCount / POSTS_PER_PAGE);
+
   return (
     <main style={{ maxWidth: 800, margin: "0 auto", padding: "40px 20px" }}>
       <div style={{ marginBottom: 28 }}>
@@ -51,7 +71,13 @@ export default async function HomePage() {
         </p>
       </div>
 
-      <HomePostsClient posts={posts} currentUsername={user?.username ?? null} />
+      <HomePostsClient
+        posts={posts}
+        currentUsername={user?.username ?? null}
+        currentPage={currentPage}
+        totalPages={totalPages}
+        totalCount={totalCount}
+      />
     </main>
   );
 }

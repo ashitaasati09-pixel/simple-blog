@@ -1,9 +1,9 @@
 "use client";
 import { usePathname } from "next/navigation";
 
-// Use this for the dropdown menu links to Profile and Change Password
 export function ProfileLink({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+
   return (
     <a
       href={"/profile?from=" + pathname}
@@ -16,6 +16,7 @@ export function ProfileLink({ children }: { children: React.ReactNode }) {
 
 export function ChangePasswordLink({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+
   return (
     <a
       href={"/change-password?from=" + pathname}
@@ -26,8 +27,20 @@ export function ChangePasswordLink({ children }: { children: React.ReactNode }) 
   );
 }
 
+export function SearchLink({ children }: { children: React.ReactNode }) {
+  return (
+    <a
+      href="/search"
+      style={{ textDecoration: "none", color: "inherit", display: "block" }}
+    >
+      {children}
+    </a>
+  );
+}
+
 export function WritePostLink() {
   const pathname = usePathname();
+
   return (
     <a
       href={"/create?from=" + pathname}

@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
+import "./globals.css";
 
 export const metadata: Metadata = {
   title: "SimpleBlog",
-  description: "A place for real voices.",
+  description: "A simple blogging platform",
 };
 
 export default function RootLayout({
@@ -16,8 +17,9 @@ export default function RootLayout({
         style={{
           margin: 0,
           padding: 0,
-          background: "#fafafa",
           fontFamily: "'Segoe UI', sans-serif",
+          background: "#f9fafb",
+          minHeight: "100vh",
         }}
       >
         {children}

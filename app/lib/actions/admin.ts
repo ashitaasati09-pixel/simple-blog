@@ -2,7 +2,7 @@
 import { revalidatePath } from "next/cache";
 import bcrypt from "bcryptjs";
 import { connectDB } from "@/app/lib/mongodb";
-import Post from "@/app/models/post";
+import { Post } from "@/app/models/post";
 import User from "@/app/models/user";
 import { requireAdmin } from "@/app/lib/admin-auth";
 import { getClientIp } from "@/app/lib/get-ip";
@@ -132,9 +132,13 @@ export async function adminUpdatePostAction(postId: string, formData: FormData) 
   await connectDB();
   await Post.findByIdAndUpdate(postId, { title, content });
 
+  // Revalidate every place this post's title/content is shown,
+  // so an admin edit shows up immediately on the public/user side too
   revalidatePath("/admin/posts");
   revalidatePath("/posts/" + postId);
   revalidatePath("/");
+  revalidatePath("/my-posts");
+  revalidatePath("/dashboard");
   return { success: true };
 }
 
@@ -142,8 +146,11 @@ export async function adminDeletePostAction(postId: string) {
   await requireAdmin();
   await connectDB();
   await Post.findByIdAndDelete(postId);
+
   revalidatePath("/admin/posts");
   revalidatePath("/");
+  revalidatePath("/my-posts");
+  revalidatePath("/dashboard");
   return { success: true };
 }
 

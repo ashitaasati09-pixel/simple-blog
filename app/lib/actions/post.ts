@@ -1,8 +1,9 @@
 "use server";
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { cookies, headers } from "next/headers";
 import { connectDB } from "@/app/lib/mongodb";
-import Post from "@/app/models/post";
+import { Post } from "@/app/models/post";
 import User from "@/app/models/user";
 
 async function getCurrentUser() {
@@ -43,6 +44,11 @@ export async function createPostAction(formData: FormData): Promise<void> {
     likes: [],
     comments: [],
   });
+
+  revalidatePath("/admin/posts");
+  revalidatePath("/dashboard");
+  revalidatePath("/my-posts");
+
   redirect("/dashboard");
 }
 
@@ -54,16 +60,29 @@ export async function updatePostAction(formData: FormData): Promise<void> {
   const title = formData.get("title") as string;
   const content = formData.get("content") as string;
 
-  if (!title?.trim() || !content?.trim()) redirect(`/posts/${postId}/edit?error=fields`);
+  // Where to send the user back to after saving — falls back to /my-posts
+  // if it's missing, and is restricted to internal paths only (security: avoid open redirects)
+  const requestedRedirect = (formData.get("redirectTo") as string) || "/my-posts";
+  const safeRedirect = requestedRedirect.startsWith("/") ? requestedRedirect : "/my-posts";
+
+  if (!title?.trim() || !content?.trim()) {
+    redirect(`/posts/${postId}/edit?error=fields&from=${encodeURIComponent(safeRedirect)}`);
+  }
 
   await connectDB();
   const post = await Post.findById(postId).lean() as { author: string } | null;
 
-  // Author or admin can update
   if (!post || (post.author !== user.username && !user.isAdmin)) redirect("/dashboard");
 
   await Post.findByIdAndUpdate(postId, { title, content });
-  redirect("/my-posts");
+
+  revalidatePath("/admin/posts");
+  revalidatePath("/my-posts");
+  revalidatePath("/dashboard");
+  revalidatePath(`/posts/${postId}`);
+  revalidatePath(safeRedirect);
+
+  redirect(safeRedirect);
 }
 
 export async function deletePostAction(postId: string): Promise<void> {
@@ -73,10 +92,14 @@ export async function deletePostAction(postId: string): Promise<void> {
   await connectDB();
   const post = await Post.findById(postId).lean() as { author: string } | null;
 
-  // Author or admin can delete
   if (!post || (post.author !== user.username && !user.isAdmin)) redirect("/dashboard");
 
   await Post.findByIdAndDelete(postId);
+
+  revalidatePath("/admin/posts");
+  revalidatePath("/dashboard");
+  revalidatePath("/my-posts");
+
   redirect("/my-posts");
 }
 

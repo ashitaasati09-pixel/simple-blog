@@ -2,7 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { getSessionUser } from "@/app/lib/session";
 import { connectDB } from "@/app/lib/mongodb";
-import Post from "@/app/models/post";
+import { Post } from "@/app/models/post";
 
 // Toggle like for current user
 export async function toggleLikeAction(postId: string) {

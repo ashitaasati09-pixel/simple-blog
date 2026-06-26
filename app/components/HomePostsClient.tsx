@@ -1,4 +1,3 @@
-/* eslint-disable @next/next/no-html-link-for-pages */
 "use client";
 import { useState, useTransition } from "react";
 import { useRouter, usePathname } from "next/navigation";
@@ -24,18 +23,52 @@ function formatDate(iso: string) {
 
 const WORD_LIMIT = 40;
 
-function getSnippet(content: string) {
-  const words = content.trim().split(/\s+/);
-  if (words.length <= WORD_LIMIT) return content;
+function stripHtml(html: string): string {
+  return html
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getSnippet(content: string): string {
+  const plain = stripHtml(content);
+  const words = plain.trim().split(/\s+/);
+  if (words.length <= WORD_LIMIT) return plain;
   return words.slice(0, WORD_LIMIT).join(" ") + "…";
+}
+
+function getPaginationPages(current: number, total: number): (number | "...")[] {
+  const pages: (number | "...")[] = [];
+  if (total <= 7) {
+    for (let i = 1; i <= total; i++) pages.push(i);
+  } else {
+    pages.push(1);
+    if (current > 3) pages.push("...");
+    for (let i = Math.max(2, current - 1); i <= Math.min(total - 1, current + 1); i++) {
+      pages.push(i);
+    }
+    if (current < total - 2) pages.push("...");
+    pages.push(total);
+  }
+  return pages;
 }
 
 export default function HomePostsClient({
   posts,
   currentUsername,
+  currentPage,
+  totalPages,
+  totalCount,
 }: {
   posts: PostData[];
   currentUsername: string | null;
+  currentPage: number;
+  totalPages: number;
+  totalCount: number;
 }) {
   const [deleteTarget, setDeleteTarget] = useState<PostData | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -59,8 +92,16 @@ export default function HomePostsClient({
     router.push("/posts/" + id + "?from=" + pathname);
   }
 
+  function goToPage(p: number) {
+    router.push(p === 1 ? "/" : "/?page=" + p);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  const paginationPages = getPaginationPages(currentPage, totalPages);
+
   return (
     <>
+      {/* Post list */}
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {posts.map((post) => {
           const isOwner = currentUsername && currentUsername === post.author;
@@ -77,7 +118,7 @@ export default function HomePostsClient({
                 padding: "22px 24px",
               }}
             >
-              {/* Author row — not part of click-to-open */}
+              {/* Author row */}
               <div
                 style={{
                   display: "flex",
@@ -163,11 +204,8 @@ export default function HomePostsClient({
                 )}
               </div>
 
-              {/* Clickable area: title + content + read more */}
-              <div
-                onClick={() => goToPost(post._id)}
-                style={{ cursor: "pointer" }}
-              >
+              {/* Clickable: title + snippet */}
+              <div onClick={() => goToPost(post._id)} style={{ cursor: "pointer" }}>
                 <h2
                   style={{
                     margin: "0 0 8px",
@@ -180,7 +218,6 @@ export default function HomePostsClient({
                 >
                   {post.title}
                 </h2>
-
                 <p style={{ margin: 0, fontSize: 14, color: "#6b7280", lineHeight: 1.7 }}>
                   {snippet}{" "}
                   <span
@@ -196,7 +233,7 @@ export default function HomePostsClient({
                 </p>
               </div>
 
-              {/* Like / comment counts — not part of click area, link to post anyway */}
+              {/* Likes / comments */}
               <div
                 style={{
                   display: "flex",
@@ -238,6 +275,101 @@ export default function HomePostsClient({
         })}
       </div>
 
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div style={{ marginTop: 36 }}>
+          <p style={{ textAlign: "center", fontSize: 12, color: "#9ca3af", margin: "0 0 14px" }}>
+            Page {currentPage} of {totalPages} · {totalCount} posts total
+          </p>
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              flexWrap: "wrap",
+            }}
+          >
+            {/* Prev */}
+            <button
+              onClick={() => goToPage(currentPage - 1)}
+              disabled={currentPage === 1}
+              style={{
+                padding: "8px 16px",
+                border: "1.5px solid #e5e7eb",
+                borderRadius: 8,
+                background: currentPage === 1 ? "#f9fafb" : "#fff",
+                color: currentPage === 1 ? "#d1d5db" : "#374151",
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: currentPage === 1 ? "not-allowed" : "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              ← Prev
+            </button>
+
+            {/* Page numbers */}
+            {paginationPages.map((pg, i) =>
+              pg === "..." ? (
+                <span
+                  key={"ellipsis-" + i}
+                  style={{ padding: "8px 4px", color: "#9ca3af", fontSize: 13 }}
+                >
+                  ...
+                </span>
+              ) : (
+                <button
+                  key={pg}
+                  onClick={() => goToPage(pg as number)}
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 8,
+                    border: pg === currentPage ? "none" : "1.5px solid #e5e7eb",
+                    background: pg === currentPage ? "#f97316" : "#fff",
+                    color: pg === currentPage ? "#fff" : "#374151",
+                    fontSize: 13,
+                    fontWeight: pg === currentPage ? 700 : 500,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (pg !== currentPage) e.currentTarget.style.borderColor = "#f97316";
+                  }}
+                  onMouseLeave={(e) => {
+                    if (pg !== currentPage) e.currentTarget.style.borderColor = "#e5e7eb";
+                  }}
+                >
+                  {pg}
+                </button>
+              )
+            )}
+
+            {/* Next */}
+            <button
+              onClick={() => goToPage(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              style={{
+                padding: "8px 16px",
+                border: "1.5px solid #e5e7eb",
+                borderRadius: 8,
+                background: currentPage === totalPages ? "#f9fafb" : "#fff",
+                color: currentPage === totalPages ? "#d1d5db" : "#374151",
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: currentPage === totalPages ? "not-allowed" : "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              Next →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirmation modal */}
       {deleteTarget && (
         <div
           style={{

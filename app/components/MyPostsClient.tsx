@@ -9,11 +9,11 @@ interface PostData {
   _id: string;
   title: string;
   content: string;
-  createdAt?: string; // ✅ made optional (fix error)
+  createdAt?: string;
 }
 
 function formatDate(iso?: string) {
-  if (!iso) return "No date"; // ✅ prevent crash
+  if (!iso) return "No date";
   return new Date(iso).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -21,8 +21,19 @@ function formatDate(iso?: string) {
   });
 }
 
+function stripHtml(html: string): string {
+  return html
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export default function MyPostsClient({
-  posts = [], // ✅ fallback
+  posts = [],
   username,
 }: {
   posts: PostData[];
@@ -55,7 +66,6 @@ export default function MyPostsClient({
           padding: "40px 20px",
         }}
       >
-        {/* ✅ FIXED Link */}
         <Link
           href="/"
           style={{
@@ -85,7 +95,6 @@ export default function MyPostsClient({
             </p>
           </div>
 
-          {/* ✅ FIXED Link */}
           <Link
             href="/create?from=/my-posts"
             style={{
@@ -113,7 +122,6 @@ export default function MyPostsClient({
           >
             <h3>No posts yet</h3>
 
-            {/* ✅ FIXED Link */}
             <Link href="/create?from=/my-posts" style={{ color: "#f97316" }}>
               Create your first post
             </Link>
@@ -121,7 +129,7 @@ export default function MyPostsClient({
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {posts.map((post) => {
-              if (!post) return null; // ✅ safety
+              if (!post) return null;
 
               return (
                 <div
@@ -153,7 +161,7 @@ export default function MyPostsClient({
                     </h3>
 
                     <p style={{ color: "#666", fontSize: 14, margin: 0 }}>
-                      {post.content?.slice(0, 100)}...
+                      {stripHtml(post.content ?? "").slice(0, 100)}...
                     </p>
                   </div>
 
@@ -164,7 +172,6 @@ export default function MyPostsClient({
                       alignItems: "center",
                     }}
                   >
-                    {/* ✅ FIXED Link */}
                     <Link
                       href={`/posts/${post._id}/edit?from=/my-posts`}
                       style={{
@@ -203,7 +210,6 @@ export default function MyPostsClient({
         )}
       </main>
 
-      {/* ✅ Delete Modal */}
       {deleteTarget && (
         <div
           style={{

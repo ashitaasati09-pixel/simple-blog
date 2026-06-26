@@ -1,5 +1,5 @@
 import { connectDB } from "@/app/lib/mongodb";
-import Post from "@/app/models/post";
+import { Post } from "@/app/models/post";
 import User from "@/app/models/user";
 import AdminDashboardClient from "@/app/components/admin/AdminDashboardClient";
 
