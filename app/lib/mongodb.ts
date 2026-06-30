@@ -2,11 +2,11 @@ import mongoose from "mongoose";
 
 const MONGODB_URI = process.env.MONGODB_URI as string;
 
+// ❌ Don't crash build on Vercel
 if (!MONGODB_URI) {
-  throw new Error("Please define MONGODB_URI in your .env.local file");
+  console.warn("⚠️ MONGODB_URI is not defined");
 }
 
-// Cache connection across hot reloads in dev
 const globalWithMongoose = global as typeof global & {
   mongoose: { conn: typeof mongoose | null; promise: Promise<typeof mongoose> | null };
 };
@@ -18,6 +18,10 @@ if (!globalWithMongoose.mongoose) {
 const cached = globalWithMongoose.mongoose;
 
 export async function connectDB() {
+  if (!MONGODB_URI) {
+    throw new Error("MONGODB_URI is missing"); // only fail at runtime
+  }
+
   if (cached.conn) return cached.conn;
 
   if (!cached.promise) {
