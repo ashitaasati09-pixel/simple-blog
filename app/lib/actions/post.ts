@@ -108,3 +108,30 @@ export async function logoutAction(): Promise<void> {
   cookieStore.set("session_user", "", { expires: new Date(0), path: "/" });
   redirect("/");
 }
+
+export async function getFeaturedPosts(): Promise<{
+  _id: string;
+  title: string;
+  author: string;
+  content: string;
+  createdAt: string;
+  likesCount: number;
+  commentsCount: number;
+  featured: boolean;
+}[]> {
+  await connectDB();
+  const posts = await Post.find({ featured: true })
+    .sort({ createdAt: -1 })
+    .lean() as any[];
+
+  return posts.map((p) => ({
+    _id: p._id.toString(),
+    title: p.title ?? "",
+    author: p.author ?? "",
+    content: p.content ?? "",
+    createdAt: p.createdAt ? new Date(p.createdAt).toISOString() : new Date().toISOString(),
+    likesCount: Array.isArray(p.likes) ? p.likes.length : (p.likesCount ?? 0),
+    commentsCount: Array.isArray(p.comments) ? p.comments.length : (p.commentsCount ?? 0),
+    featured: true,
+  }));
+}

@@ -37,7 +37,7 @@ export default function CreatePostForm({ backUrl }: { backUrl: string }) {
   };
 
   return (
-    <div>
+    <div style={{ maxWidth: 1400, margin: "0 auto" }}>
       {displayError && (
         <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", color: "#dc2626", borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 13 }}>
           {displayError}

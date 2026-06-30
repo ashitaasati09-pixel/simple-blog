@@ -16,6 +16,7 @@ export interface IPost extends Document {
   likes: string[];
   comments: IComment[];
   ipAddress?: string;
+  featured: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -36,12 +37,12 @@ const PostSchema = new Schema<IPost>(
     likes: { type: [String], default: [] },
     comments: { type: [CommentSchema], default: [] },
     ipAddress: { type: String, default: "" },
+    featured: { type: Boolean, default: false },
   },
   {
-    timestamps: true, // auto adds createdAt & updatedAt
+    timestamps: true,
   }
 );
 
 /* ---------------- EXPORT MODEL ---------------- */
-export const Post =
-  models.Post || model<IPost>("Post", PostSchema);
+export const Post = models.Post || model<IPost>("Post", PostSchema);

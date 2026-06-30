@@ -7,6 +7,7 @@ const navItems = [
   { label: "Admins", href: "/admin/admins", icon: "🛠" },
   { label: "Users", href: "/admin/users", icon: "◐" },
   { label: "Posts", href: "/admin/posts", icon: "▤" },
+  { label: "Featured", href: "/admin/featured", icon: "⭐" },
 ];
 
 export default function AdminSidebar({ username }: { username: string }) {

@@ -19,6 +19,10 @@ function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\s+/g, " ").trim();
 }
+function getFirstImage(html: string): string | null {
+  const match = html.match(/<img[^>]+src=["']([^"']+)["']/i);
+  return match ? match[1] : null;
+}
 function getPaginationPages(current: number, total: number): (number | "...")[] {
   const pages: (number | "...")[] = [];
   if (total <= 7) { for (let i = 1; i <= total; i++) pages.push(i); }
@@ -74,7 +78,7 @@ export default function UserProfileClient({
 
   return (
     <>
-      <main style={{ maxWidth: 720, margin: "0 auto", padding: "40px 20px" }}>
+      <main style={{ maxWidth: 1400, margin: "0 auto", padding: "40px 20px" }}>
         <a href={backUrl} style={{ fontSize: 13, color: "#6b7280", textDecoration: "none", fontWeight: 500 }}>
           ← Back
         </a>
@@ -125,17 +129,39 @@ export default function UserProfileClient({
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {posts.map((post) => {
                 const plainContent = stripHtml(post.content);
+                const thumbUrl = getFirstImage(post.content);
                 return (
                   <div key={post._id} style={{ border: "1px solid #eee", borderRadius: 10, padding: 20 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
-                      <div onClick={() => goToPost(post._id)} style={{ cursor: "pointer", flex: 1 }}>
-                        <div style={{ fontSize: 12, color: "#999" }}>{formatDate(post.createdAt)}</div>
-                        <h3 style={{ margin: "6px 0 4px", fontSize: 16, fontWeight: 700 }}>{post.title}</h3>
-                        <p style={{ color: "#666", fontSize: 14, margin: 0 }}>
-                          {plainContent.slice(0, 140)}{plainContent.length > 140 ? "…" : ""}{" "}
-                          <span style={{ color: "#f97316", fontWeight: 700, fontSize: 14, whiteSpace: "nowrap" }}>Read more →</span>
-                        </p>
+
+                      <div
+                        onClick={() => goToPost(post._id)}
+                        style={{ cursor: "pointer", flex: 1, display: "flex", gap: 16, alignItems: "flex-start" }}
+                      >
+                        {thumbUrl && (
+                          <div style={{ flexShrink: 0 }}>
+                            <img
+                              src={thumbUrl}
+                              alt={post.title}
+                              style={{
+                                width: 110, height: 84,
+                                objectFit: "cover", borderRadius: 8,
+                                display: "block", border: "1px solid #f0f0f0",
+                              }}
+                            />
+                          </div>
+                        )}
+
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12, color: "#999", marginBottom: 4 }}>{formatDate(post.createdAt)}</div>
+                          <h3 style={{ margin: "0 0 6px", fontSize: 16, fontWeight: 700, color: "#111", lineHeight: 1.3 }}>{post.title}</h3>
+                          <p style={{ color: "#6b7280", fontSize: 14, margin: 0, lineHeight: 1.7 }}>
+                            {plainContent.slice(0, 140)}{plainContent.length > 140 ? "…" : ""}{" "}
+                            <span style={{ color: "#f97316", fontWeight: 700, fontSize: 14, whiteSpace: "nowrap" }}>Read more →</span>
+                          </p>
+                        </div>
                       </div>
+
                       {isOwner && (
                         <div style={{ display: "flex", gap: 8, flexShrink: 0, alignItems: "center", paddingTop: 4 }}>
                           <a
@@ -150,6 +176,7 @@ export default function UserProfileClient({
                         </div>
                       )}
                     </div>
+
                     <div style={{ display: "flex", gap: 18, marginTop: 12, paddingTop: 10, borderTop: "1px solid #f5f5f5" }}>
                       <a href={"/posts/" + post._id + "?from=" + pathname}
                         style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 13, color: "#6b7280", textDecoration: "none" }}>
@@ -173,7 +200,6 @@ export default function UserProfileClient({
                 </p>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
 
-                  {/* First « */}
                   {currentPage > 2 && (
                     <button onClick={() => goToPage(1)}
                       style={{ padding: "8px 12px", border: "1.5px solid #e5e7eb", borderRadius: 8, background: "#fff", color: "#374151", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
@@ -181,7 +207,6 @@ export default function UserProfileClient({
                       onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#e5e7eb")}>«</button>
                   )}
 
-                  {/* Prev */}
                   <button onClick={() => goToPage(currentPage - 1)} disabled={currentPage === 1}
                     style={{ padding: "8px 16px", border: "1.5px solid #e5e7eb", borderRadius: 8, background: currentPage === 1 ? "#f9fafb" : "#fff", color: currentPage === 1 ? "#d1d5db" : "#374151", fontSize: 13, fontWeight: 600, cursor: currentPage === 1 ? "not-allowed" : "pointer", fontFamily: "inherit" }}
                     onMouseEnter={(e) => { if (currentPage !== 1) e.currentTarget.style.borderColor = "#f97316"; }}
@@ -189,7 +214,6 @@ export default function UserProfileClient({
                     ← Prev
                   </button>
 
-                  {/* Page numbers */}
                   {paginationPages.map((pg, i) =>
                     pg === "..." ? (
                       <span key={"e" + i} style={{ padding: "8px 4px", color: "#9ca3af", fontSize: 13 }}>...</span>
@@ -203,7 +227,6 @@ export default function UserProfileClient({
                     )
                   )}
 
-                  {/* Next */}
                   <button onClick={() => goToPage(currentPage + 1)} disabled={currentPage === totalPages}
                     style={{ padding: "8px 16px", border: "1.5px solid #e5e7eb", borderRadius: 8, background: currentPage === totalPages ? "#f9fafb" : "#fff", color: currentPage === totalPages ? "#d1d5db" : "#374151", fontSize: 13, fontWeight: 600, cursor: currentPage === totalPages ? "not-allowed" : "pointer", fontFamily: "inherit" }}
                     onMouseEnter={(e) => { if (currentPage !== totalPages) e.currentTarget.style.borderColor = "#f97316"; }}
@@ -211,7 +234,6 @@ export default function UserProfileClient({
                     Next →
                   </button>
 
-                  {/* Last » */}
                   {currentPage < totalPages - 1 && (
                     <button onClick={() => goToPage(totalPages)}
                       style={{ padding: "8px 12px", border: "1.5px solid #e5e7eb", borderRadius: 8, background: "#fff", color: "#374151", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
